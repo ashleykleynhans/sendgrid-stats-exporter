@@ -1,5 +1,4 @@
-dist
-sendgrid-stats-exporter
+dist/
 
 .env
 

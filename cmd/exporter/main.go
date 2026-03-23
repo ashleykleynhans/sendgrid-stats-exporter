@@ -8,16 +8,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/alecthomas/kingpin/v2"
 	"github.com/chatwork/sendgrid-stats-exporter/internal/collector"
 	"github.com/chatwork/sendgrid-stats-exporter/internal/sendgrid"
-	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/prometheus/common/promlog"
-	"github.com/prometheus/common/promlog/flag"
+	"github.com/prometheus/common/promslog"
+	"github.com/prometheus/common/promslog/flag"
 	"github.com/prometheus/common/version"
-	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 const (
@@ -58,17 +57,17 @@ var (
 )
 
 func main() {
-	promlogConfig := &promlog.Config{}
-	flag.AddFlags(kingpin.CommandLine, promlogConfig)
+	promslogConfig := &promslog.Config{}
+	flag.AddFlags(kingpin.CommandLine, promslogConfig)
 	kingpin.Version(version.Info())
 	kingpin.HelpFlag.Short('h')
 	kingpin.Parse()
 
-	logger := promlog.New(promlogConfig)
+	logger := promslog.New(promslogConfig)
 
-	level.Info(logger).Log("msg", "Starting", exporterName, "version", version.Info(), gitCommit)
-	level.Info(logger).Log("Build context", version.BuildContext())
-	level.Info(logger).Log("msg", "Listening on", *listenAddress)
+	logger.Info("Starting", "exporter", exporterName, "version", version.Info(), "commit", gitCommit)
+	logger.Info("Build context", "context", version.BuildContext())
+	logger.Info("Listening", "address", *listenAddress)
 
 	client := sendgrid.NewClient(*sendGridAPIKey)
 	config := collector.Config{
@@ -110,7 +109,7 @@ func main() {
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil {
-			level.Error(logger).Log("err", err)
+			logger.Error("Server error", "err", err)
 		}
 	}()
 
@@ -120,6 +119,6 @@ func main() {
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		level.Error(logger).Log("err", err)
+		logger.Error("Shutdown error", "err", err)
 	}
 }

@@ -1,11 +1,10 @@
 package collector
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/chatwork/sendgrid-stats-exporter/internal/sendgrid"
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/jinzhu/now"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -22,7 +21,7 @@ type Config struct {
 
 // Collector implements the prometheus.Collector interface for SendGrid metrics.
 type Collector struct {
-	logger log.Logger
+	logger *slog.Logger
 	client *sendgrid.Client
 	config Config
 
@@ -48,7 +47,7 @@ type Collector struct {
 }
 
 // New creates a new Collector.
-func New(logger log.Logger, client *sendgrid.Client, config Config) *Collector {
+func New(logger *slog.Logger, client *sendgrid.Client, config Config) *Collector {
 	labels := []string{"user_name"}
 
 	return &Collector{
@@ -122,7 +121,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 
 	statistics, err := c.client.CollectByDate(queryDate, today, c.config.AccumulatedMetrics)
 	if err != nil {
-		level.Error(c.logger).Log(err)
+		c.logger.Error("Failed to collect stats", "err", err)
 		return
 	}
 

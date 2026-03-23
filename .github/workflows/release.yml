@@ -29,9 +29,9 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME}
           GIT_HASH=$(git rev-parse HEAD)
-          go build -ldflags "-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_HASH}" -o sendgrid-stats-exporter ./cmd/exporter
-          tar czf sendgrid-stats-exporter-${VERSION}-linux-amd64.tar.gz sendgrid-stats-exporter
-          rm sendgrid-stats-exporter
+          go build -ldflags "-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_HASH}" -o sendgrid_exporter ./cmd/exporter
+          tar czf sendgrid_exporter-${VERSION}-linux-amd64.tar.gz sendgrid_exporter
+          rm sendgrid_exporter
 
       - name: Build linux/arm64
         env:
@@ -40,9 +40,9 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME}
           GIT_HASH=$(git rev-parse HEAD)
-          go build -ldflags "-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_HASH}" -o sendgrid-stats-exporter ./cmd/exporter
-          tar czf sendgrid-stats-exporter-${VERSION}-linux-arm64.tar.gz sendgrid-stats-exporter
-          rm sendgrid-stats-exporter
+          go build -ldflags "-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_HASH}" -o sendgrid_exporter ./cmd/exporter
+          tar czf sendgrid_exporter-${VERSION}-linux-arm64.tar.gz sendgrid_exporter
+          rm sendgrid_exporter
 
       - name: Generate changelog
         id: changelog
@@ -64,4 +64,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           body: ${{ steps.changelog.outputs.body }}
-          files: sendgrid-stats-exporter-*.tar.gz
+          files: sendgrid_exporter-*.tar.gz

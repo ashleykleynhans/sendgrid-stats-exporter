@@ -1,13 +1,13 @@
 package collector
 
 import (
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/chatwork/sendgrid-stats-exporter/internal/sendgrid"
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 )
@@ -20,7 +20,7 @@ func newTestCollector(healthURL, statsURL string) *Collector {
 	config := Config{
 		UserName: "test-user",
 	}
-	return New(log.NewNopLogger(), client, config)
+	return New(slog.Default(), client, config)
 }
 
 func drainMetrics(ch chan prometheus.Metric) []prometheus.Metric {

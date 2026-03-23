@@ -11,7 +11,7 @@ Prometheus exporter for SendGrid daily metrics exposed by SendGrid Stats API(v3)
 
 ```
 $ make
-$ ./dist/exporter --sendgrid.api-key='secret' --web.listen-address=':9154' --web.disable-exporter-metrics
+$ ./dist/sendgrid_exporter --sendgrid.api-key='secret' --web.listen-address=':9154' --web.disable-exporter-metrics
 ```
 
 ```
@@ -20,8 +20,8 @@ $ curl localhost:9154/metrics
 ```
 
 ```
-$ ./exporter -h
-usage: exporter [<flags>]
+$ ./dist/sendgrid_exporter -h
+usage: sendgrid_exporter [<flags>]
 
 Flags:
   -h, --help                  Show context-sensitive help (also try --help-long and --help-man).
