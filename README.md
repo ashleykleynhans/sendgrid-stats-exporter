@@ -86,7 +86,7 @@ $ vi .env
 $ docker-compose up -d
 ```
 
-You can check the metrics by accessing Prometheus ([http://127.0.0.1:9200]()).
+You can check the metrics by accessing Prometheus ([http://127.0.0.1:9154]()).
 
 #### Running with `helm`
 
