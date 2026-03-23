@@ -138,6 +138,7 @@ func (c *Client) CollectByDate(timeStart time.Time, timeEnd time.Time, accumulat
 
 		return stats, nil
 	default:
-		return nil, fmt.Errorf("status code = %d, response = %s", res.StatusCode, res.Body)
+		body, _ := io.ReadAll(res.Body)
+		return nil, fmt.Errorf("status code = %d, response = %s", res.StatusCode, string(body))
 	}
 }
