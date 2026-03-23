@@ -11,8 +11,9 @@ import (
 )
 
 var (
-	StatsEndpoint  = "https://api.sendgrid.com/v3/stats"
-	HealthEndpoint = "https://api.sendgrid.com/v3/scopes"
+	StatsEndpoint   = "https://api.sendgrid.com/v3/stats"
+	HealthEndpoint  = "https://api.sendgrid.com/v3/scopes"
+	AccountEndpoint = "https://api.sendgrid.com/v3/user/account"
 )
 
 // Metrics represents the email delivery metrics returned by the SendGrid Stats API.
@@ -52,6 +53,12 @@ type HealthStatus struct {
 	AuthOk float64 // 1 = key valid, 0 = 401/403
 }
 
+// AccountInfo holds account type and reputation from the SendGrid API.
+type AccountInfo struct {
+	Type       string  `json:"type"`
+	Reputation float64 `json:"reputation"`
+}
+
 // Client is a SendGrid API client for stats and health checking.
 type Client struct {
 	APIKey     string
@@ -85,8 +92,39 @@ func (c *Client) CheckHealth() HealthStatus {
 		return HealthStatus{Up: 1, AuthOk: 1}
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return HealthStatus{Up: 1, AuthOk: 0}
+	case http.StatusTooManyRequests:
+		return HealthStatus{Up: 1, AuthOk: 1}
 	default:
 		return HealthStatus{Up: 0, AuthOk: 0}
+	}
+}
+
+// GetAccountInfo fetches account type and reputation from the SendGrid API.
+func (c *Client) GetAccountInfo() (*AccountInfo, error) {
+	req, err := http.NewRequest(http.MethodGet, AccountEndpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.APIKey))
+
+	res, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	switch res.StatusCode {
+	case http.StatusOK:
+		var info AccountInfo
+		if err := json.NewDecoder(res.Body).Decode(&info); err != nil {
+			return nil, err
+		}
+		return &info, nil
+	case http.StatusTooManyRequests:
+		return nil, fmt.Errorf("API rate limit exceeded")
+	default:
+		body, _ := io.ReadAll(res.Body)
+		return nil, fmt.Errorf("status code = %d, response = %s", res.StatusCode, string(body))
 	}
 }
 

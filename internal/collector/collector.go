@@ -17,6 +17,7 @@ type Config struct {
 	Location           string
 	TimeOffset         int
 	AccumulatedMetrics bool
+	CollectAccountInfo bool
 }
 
 // Collector implements the prometheus.Collector interface for SendGrid metrics.
@@ -44,6 +45,9 @@ type Collector struct {
 
 	apiUp     *prometheus.Desc
 	apiAuthOk *prometheus.Desc
+
+	accountType *prometheus.Desc
+	reputation  *prometheus.Desc
 }
 
 // New creates a new Collector.
@@ -74,6 +78,9 @@ func New(logger *slog.Logger, client *sendgrid.Client, config Config) *Collector
 
 		apiUp:     prometheus.NewDesc(prometheus.BuildFQName(namespace, "", "api_up"), "1 if the SendGrid API is reachable, 0 otherwise", labels, nil),
 		apiAuthOk: prometheus.NewDesc(prometheus.BuildFQName(namespace, "", "api_auth_ok"), "1 if the SendGrid API key is valid, 0 if unauthorized", labels, nil),
+
+		accountType: prometheus.NewDesc(prometheus.BuildFQName(namespace, "", "account_type"), "The type of account for this user, free or paid", []string{"user_name", "account_type"}, nil),
+		reputation:  prometheus.NewDesc(prometheus.BuildFQName(namespace, "", "reputation"), "The sender reputation for this user", labels, nil),
 	}
 }
 
@@ -97,6 +104,8 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.unsubscribes
 	ch <- c.apiUp
 	ch <- c.apiAuthOk
+	ch <- c.accountType
+	ch <- c.reputation
 }
 
 // Collect fetches metrics from the SendGrid API and sends them to the channel.
@@ -104,6 +113,16 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	health := c.client.CheckHealth()
 	ch <- prometheus.MustNewConstMetric(c.apiUp, prometheus.GaugeValue, health.Up, c.config.UserName)
 	ch <- prometheus.MustNewConstMetric(c.apiAuthOk, prometheus.GaugeValue, health.AuthOk, c.config.UserName)
+
+	if c.config.CollectAccountInfo {
+		accountInfo, err := c.client.GetAccountInfo()
+		if err != nil {
+			c.logger.Error("Failed to get account info", "err", err)
+		} else {
+			ch <- prometheus.MustNewConstMetric(c.accountType, prometheus.GaugeValue, 1, c.config.UserName, accountInfo.Type)
+			ch <- prometheus.MustNewConstMetric(c.reputation, prometheus.GaugeValue, accountInfo.Reputation, c.config.UserName)
+		}
+	}
 
 	var today time.Time
 

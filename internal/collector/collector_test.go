@@ -12,8 +12,15 @@ import (
 	dto "github.com/prometheus/client_model/go"
 )
 
+func okAccountSrv() *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"type":"paid","reputation":99.5}`))
+	}))
+}
+
 func newTestCollector(healthURL, statsURL string) *Collector {
-	return newTestCollectorWithConfig(healthURL, statsURL, Config{UserName: "test-user"})
+	return newTestCollectorWithConfig(healthURL, statsURL, Config{UserName: "test-user", CollectAccountInfo: true})
 }
 
 func newTestCollectorWithConfig(healthURL, statsURL string, config Config) *Collector {
@@ -60,27 +67,24 @@ func TestDescribe(t *testing.T) {
 		descs = append(descs, d)
 	}
 
-	expected := 18
+	// 16 stats + 2 health + 2 account = 20
+	expected := 20
 	if len(descs) != expected {
 		t.Errorf("expected %d descriptors, got %d", expected, len(descs))
 	}
 
-	foundUp := false
-	foundAuth := false
-	for _, d := range descs {
-		s := d.String()
-		if strings.Contains(s, "api_up") {
-			foundUp = true
+	names := []string{"api_up", "api_auth_ok", "account_type", "reputation"}
+	for _, name := range names {
+		found := false
+		for _, d := range descs {
+			if strings.Contains(d.String(), name) {
+				found = true
+				break
+			}
 		}
-		if strings.Contains(s, "api_auth_ok") {
-			foundAuth = true
+		if !found {
+			t.Errorf("expected %s descriptor", name)
 		}
-	}
-	if !foundUp {
-		t.Error("expected api_up descriptor")
-	}
-	if !foundAuth {
-		t.Error("expected api_auth_ok descriptor")
 	}
 }
 
@@ -89,6 +93,10 @@ func TestCollect_HealthyWithStats(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer healthSrv.Close()
+
+	accountSrv := okAccountSrv()
+	defer accountSrv.Close()
+	sendgrid.AccountEndpoint = accountSrv.URL
 
 	statsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -102,8 +110,9 @@ func TestCollect_HealthyWithStats(t *testing.T) {
 
 	metrics := drainMetrics(ch)
 
-	if len(metrics) != 18 {
-		t.Errorf("expected 18 metrics, got %d", len(metrics))
+	// 2 health + 2 account + 16 stats = 20
+	if len(metrics) != 20 {
+		t.Errorf("expected 20 metrics, got %d", len(metrics))
 	}
 
 	upMetric := findMetric(metrics, "api_up")
@@ -122,6 +131,14 @@ func TestCollect_HealthyWithStats(t *testing.T) {
 		t.Errorf("expected api_auth_ok=1, got %f", authMetric.GetGauge().GetValue())
 	}
 
+	repMetric := findMetric(metrics, "reputation")
+	if repMetric == nil {
+		t.Fatal("reputation metric not found")
+	}
+	if repMetric.GetGauge().GetValue() != 99.5 {
+		t.Errorf("expected reputation=99.5, got %f", repMetric.GetGauge().GetValue())
+	}
+
 	reqMetric := findMetric(metrics, "\"requests\"")
 	if reqMetric == nil {
 		t.Fatal("requests metric not found")
@@ -137,6 +154,10 @@ func TestCollect_HealthEmittedEvenWhenStatsFail(t *testing.T) {
 	}))
 	defer healthSrv.Close()
 
+	accountSrv := okAccountSrv()
+	defer accountSrv.Close()
+	sendgrid.AccountEndpoint = accountSrv.URL
+
 	statsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("error"))
@@ -149,8 +170,9 @@ func TestCollect_HealthEmittedEvenWhenStatsFail(t *testing.T) {
 
 	metrics := drainMetrics(ch)
 
-	if len(metrics) != 2 {
-		t.Errorf("expected 2 health metrics when stats fail, got %d", len(metrics))
+	// 2 health + 2 account, no stats
+	if len(metrics) != 4 {
+		t.Errorf("expected 4 metrics when stats fail, got %d", len(metrics))
 	}
 
 	upMetric := findMetric(metrics, "api_up")
@@ -168,6 +190,13 @@ func TestCollect_AuthFailure(t *testing.T) {
 	}))
 	defer healthSrv.Close()
 
+	// Account will also fail with auth error
+	accountSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer accountSrv.Close()
+	sendgrid.AccountEndpoint = accountSrv.URL
+
 	statsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte("unauthorized"))
@@ -180,6 +209,7 @@ func TestCollect_AuthFailure(t *testing.T) {
 
 	metrics := drainMetrics(ch)
 
+	// 2 health only, account and stats both fail
 	if len(metrics) != 2 {
 		t.Errorf("expected 2 health metrics, got %d", len(metrics))
 	}
@@ -207,6 +237,10 @@ func TestCollect_WithTimezone(t *testing.T) {
 	}))
 	defer healthSrv.Close()
 
+	accountSrv := okAccountSrv()
+	defer accountSrv.Close()
+	sendgrid.AccountEndpoint = accountSrv.URL
+
 	statsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`[{"date":"2024-01-01","stats":[{"metrics":{"requests":7}}]}]`))
@@ -214,9 +248,10 @@ func TestCollect_WithTimezone(t *testing.T) {
 	defer statsSrv.Close()
 
 	config := Config{
-		UserName:   "test-user",
-		Location:   "Asia/Tokyo",
-		TimeOffset: 32400,
+		UserName:           "test-user",
+		Location:           "Asia/Tokyo",
+		TimeOffset:         32400,
+		CollectAccountInfo: true,
 	}
 	c := newTestCollectorWithConfig(healthSrv.URL, statsSrv.URL, config)
 	ch := make(chan prometheus.Metric, 50)
@@ -224,9 +259,9 @@ func TestCollect_WithTimezone(t *testing.T) {
 
 	metrics := drainMetrics(ch)
 
-	// 2 health + 16 stats = 18
-	if len(metrics) != 18 {
-		t.Errorf("expected 18 metrics, got %d", len(metrics))
+	// 2 health + 2 account + 16 stats = 20
+	if len(metrics) != 20 {
+		t.Errorf("expected 20 metrics, got %d", len(metrics))
 	}
 
 	reqMetric := findMetric(metrics, "\"requests\"")
@@ -244,6 +279,10 @@ func TestCollect_WithAccumulatedMetrics(t *testing.T) {
 	}))
 	defer healthSrv.Close()
 
+	accountSrv := okAccountSrv()
+	defer accountSrv.Close()
+	sendgrid.AccountEndpoint = accountSrv.URL
+
 	statsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		if q.Get("aggregated_by") != "month" {
@@ -257,6 +296,7 @@ func TestCollect_WithAccumulatedMetrics(t *testing.T) {
 	config := Config{
 		UserName:           "test-user",
 		AccumulatedMetrics: true,
+		CollectAccountInfo: true,
 	}
 	c := newTestCollectorWithConfig(healthSrv.URL, statsSrv.URL, config)
 	ch := make(chan prometheus.Metric, 50)
@@ -264,8 +304,8 @@ func TestCollect_WithAccumulatedMetrics(t *testing.T) {
 
 	metrics := drainMetrics(ch)
 
-	if len(metrics) != 18 {
-		t.Errorf("expected 18 metrics, got %d", len(metrics))
+	if len(metrics) != 20 {
+		t.Errorf("expected 20 metrics, got %d", len(metrics))
 	}
 
 	reqMetric := findMetric(metrics, "\"requests\"")
@@ -274,5 +314,65 @@ func TestCollect_WithAccumulatedMetrics(t *testing.T) {
 	}
 	if reqMetric.GetGauge().GetValue() != 100 {
 		t.Errorf("expected requests=100, got %f", reqMetric.GetGauge().GetValue())
+	}
+}
+
+func TestCollect_AccountInfoFailsGracefully(t *testing.T) {
+	healthSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer healthSrv.Close()
+
+	// Account endpoint fails
+	sendgrid.AccountEndpoint = "http://127.0.0.1:1"
+
+	statsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`[{"date":"2024-01-01","stats":[{"metrics":{"requests":5}}]}]`))
+	}))
+	defer statsSrv.Close()
+
+	c := newTestCollector(healthSrv.URL, statsSrv.URL)
+	ch := make(chan prometheus.Metric, 50)
+	c.Collect(ch)
+
+	metrics := drainMetrics(ch)
+
+	// 2 health + 0 account + 16 stats = 18
+	if len(metrics) != 18 {
+		t.Errorf("expected 18 metrics when account fails, got %d", len(metrics))
+	}
+}
+
+func TestCollect_AccountInfoDisabled(t *testing.T) {
+	healthSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer healthSrv.Close()
+
+	statsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`[{"date":"2024-01-01","stats":[{"metrics":{"requests":5}}]}]`))
+	}))
+	defer statsSrv.Close()
+
+	config := Config{
+		UserName:           "test-user",
+		CollectAccountInfo: false,
+	}
+	c := newTestCollectorWithConfig(healthSrv.URL, statsSrv.URL, config)
+	ch := make(chan prometheus.Metric, 50)
+	c.Collect(ch)
+
+	metrics := drainMetrics(ch)
+
+	// 2 health + 16 stats = 18, no account metrics
+	if len(metrics) != 18 {
+		t.Errorf("expected 18 metrics when account disabled, got %d", len(metrics))
+	}
+
+	repMetric := findMetric(metrics, "reputation")
+	if repMetric != nil {
+		t.Error("expected no reputation metric when account info disabled")
 	}
 }

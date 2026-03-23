@@ -53,6 +53,7 @@ All flags can be set via environment variables:
 | `SENDGRID_LOCATION` | `--sendgrid.location` |
 | `SENDGRID_TIME_OFFSET` | `--sendgrid.time-offset` |
 | `SENDGRID_ACCUMULATED_METRICS` | `--sendgrid.accumulated-metrics` |
+| `SENDGRID_COLLECT_ACCOUNT_INFO` | `--sendgrid.collect-account-info` |
 | `LISTEN_ADDRESS` | `--web.listen-address` |
 | `DISABLE_EXPORTER_METRICS` | `--web.disable-exporter-metrics` |
 
@@ -87,6 +88,16 @@ All metrics are prefixed with `sendgrid_` and labelled with `user_name`.
 | `unique_clicks` | Unique recipients who clicked links |
 | `unsubscribes` | Recipients who unsubscribed |
 | `unsubscribe_drops` | Emails dropped due to a prior unsubscribe |
+
+### Account metrics
+
+Disabled by default. Enable with `SENDGRID_COLLECT_ACCOUNT_INFO=true` or `--sendgrid.collect-account-info`.
+Requires the **Billing > Read** API key permission.
+
+| Metric | Description |
+|---|---|
+| `account_type` | Gauge with value `1`, labelled with `account_type` (`free` or `paid`). From `/v3/user/account`. |
+| `reputation` | Sender reputation score (0-100). From `/v3/user/account`. |
 
 ### API health metrics
 

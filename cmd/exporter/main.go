@@ -54,6 +54,10 @@ var (
 		"sendgrid.accumulated-metrics",
 		"[Optional] Accumulated SendGrid Metrics by month, to calculate monthly email limit.",
 	).Default("False").Envar("SENDGRID_ACCUMULATED_METRICS").Bool()
+	collectAccountInfo = kingpin.Flag(
+		"sendgrid.collect-account-info",
+		"[Optional] Collect account type and reputation metrics from /v3/user/account. Requires Billing Read permission.",
+	).Default("False").Envar("SENDGRID_COLLECT_ACCOUNT_INFO").Bool()
 )
 
 func main() {
@@ -75,6 +79,7 @@ func main() {
 		Location:           *location,
 		TimeOffset:         *timeOffset,
 		AccumulatedMetrics: *accumulatedMetrics,
+		CollectAccountInfo: *collectAccountInfo,
 	}
 	c := collector.New(logger, client, config)
 

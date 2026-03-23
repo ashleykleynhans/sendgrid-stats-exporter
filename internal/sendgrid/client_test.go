@@ -105,6 +105,25 @@ func TestCheckHealth_NetworkError(t *testing.T) {
 	}
 }
 
+func TestCheckHealth_RateLimit(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	orig := HealthEndpoint
+	HealthEndpoint = srv.URL
+	defer func() { HealthEndpoint = orig }()
+
+	status := newTestClient().CheckHealth()
+	if status.Up != 1 {
+		t.Errorf("expected Up=1, got %f", status.Up)
+	}
+	if status.AuthOk != 1 {
+		t.Errorf("expected AuthOk=1, got %f", status.AuthOk)
+	}
+}
+
 func TestCollectByDate_OK(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-api-key" {
@@ -239,6 +258,107 @@ func TestCollectByDate_InvalidURL(t *testing.T) {
 	_, err := newTestClient().CollectByDate(now, now, false)
 	if err == nil {
 		t.Fatal("expected error for invalid URL")
+	}
+}
+
+func TestGetAccountInfo_OK(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-api-key" {
+			t.Errorf("expected Bearer test-api-key, got %s", r.Header.Get("Authorization"))
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"type":"paid","reputation":99.7}`))
+	}))
+	defer srv.Close()
+
+	orig := AccountEndpoint
+	AccountEndpoint = srv.URL
+	defer func() { AccountEndpoint = orig }()
+
+	info, err := newTestClient().GetAccountInfo()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.Type != "paid" {
+		t.Errorf("expected type=paid, got %s", info.Type)
+	}
+	if info.Reputation != 99.7 {
+		t.Errorf("expected reputation=99.7, got %f", info.Reputation)
+	}
+}
+
+func TestGetAccountInfo_RateLimit(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	orig := AccountEndpoint
+	AccountEndpoint = srv.URL
+	defer func() { AccountEndpoint = orig }()
+
+	_, err := newTestClient().GetAccountInfo()
+	if err == nil {
+		t.Fatal("expected error for rate limit")
+	}
+	if err.Error() != "API rate limit exceeded" {
+		t.Errorf("expected 'API rate limit exceeded', got '%s'", err.Error())
+	}
+}
+
+func TestGetAccountInfo_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"errors":[{"message":"access forbidden"}]}`))
+	}))
+	defer srv.Close()
+
+	orig := AccountEndpoint
+	AccountEndpoint = srv.URL
+	defer func() { AccountEndpoint = orig }()
+
+	_, err := newTestClient().GetAccountInfo()
+	if err == nil {
+		t.Fatal("expected error for forbidden")
+	}
+}
+
+func TestGetAccountInfo_NetworkError(t *testing.T) {
+	orig := AccountEndpoint
+	AccountEndpoint = "http://127.0.0.1:1"
+	defer func() { AccountEndpoint = orig }()
+
+	_, err := newTestClient().GetAccountInfo()
+	if err == nil {
+		t.Fatal("expected error for network failure")
+	}
+}
+
+func TestGetAccountInfo_InvalidURL(t *testing.T) {
+	orig := AccountEndpoint
+	AccountEndpoint = "://invalid"
+	defer func() { AccountEndpoint = orig }()
+
+	_, err := newTestClient().GetAccountInfo()
+	if err == nil {
+		t.Fatal("expected error for invalid URL")
+	}
+}
+
+func TestGetAccountInfo_InvalidJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`not json`))
+	}))
+	defer srv.Close()
+
+	orig := AccountEndpoint
+	AccountEndpoint = srv.URL
+	defer func() { AccountEndpoint = orig }()
+
+	_, err := newTestClient().GetAccountInfo()
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
 	}
 }
 

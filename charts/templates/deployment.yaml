@@ -46,6 +46,8 @@ spec:
                 secretKeyRef:
                   name: {{ include "sendgrid-stats-exporter.secretName" . }}
                   key: apiKey
+            - name: SENDGRID_COLLECT_ACCOUNT_INFO
+              value: "{{ .Values.secret.collectAccountInfo }}"
           {{- range $key, $value := .Values.extraEnv }}
             - name: {{ $key }}
               value: "{{ $value }}"
