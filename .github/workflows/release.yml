@@ -72,8 +72,14 @@ jobs:
             echo "EOF" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Package Helm chart
+        run: |
+          helm package charts/
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           body: ${{ steps.changelog.outputs.body }}
-          files: sendgrid_exporter-*.tar.gz
+          files: |
+            sendgrid_exporter-*.tar.gz
+            sendgrid-stats-exporter-*.tgz
