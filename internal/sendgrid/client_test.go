@@ -215,3 +215,47 @@ func TestCollectByDate_NetworkError(t *testing.T) {
 		t.Fatal("expected error for network failure")
 	}
 }
+
+func TestCheckHealth_InvalidURL(t *testing.T) {
+	orig := HealthEndpoint
+	HealthEndpoint = "://invalid"
+	defer func() { HealthEndpoint = orig }()
+
+	status := newTestClient().CheckHealth()
+	if status.Up != 0 {
+		t.Errorf("expected Up=0, got %f", status.Up)
+	}
+	if status.AuthOk != 0 {
+		t.Errorf("expected AuthOk=0, got %f", status.AuthOk)
+	}
+}
+
+func TestCollectByDate_InvalidURL(t *testing.T) {
+	orig := StatsEndpoint
+	StatsEndpoint = "://invalid"
+	defer func() { StatsEndpoint = orig }()
+
+	now := time.Now()
+	_, err := newTestClient().CollectByDate(now, now, false)
+	if err == nil {
+		t.Fatal("expected error for invalid URL")
+	}
+}
+
+func TestCollectByDate_InvalidJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`not json`))
+	}))
+	defer srv.Close()
+
+	orig := StatsEndpoint
+	StatsEndpoint = srv.URL
+	defer func() { StatsEndpoint = orig }()
+
+	now := time.Now()
+	_, err := newTestClient().CollectByDate(now, now, false)
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+}

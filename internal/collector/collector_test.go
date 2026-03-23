@@ -13,13 +13,14 @@ import (
 )
 
 func newTestCollector(healthURL, statsURL string) *Collector {
+	return newTestCollectorWithConfig(healthURL, statsURL, Config{UserName: "test-user"})
+}
+
+func newTestCollectorWithConfig(healthURL, statsURL string, config Config) *Collector {
 	sendgrid.HealthEndpoint = healthURL
 	sendgrid.StatsEndpoint = statsURL
 
 	client := sendgrid.NewClient("test-api-key")
-	config := Config{
-		UserName: "test-user",
-	}
 	return New(slog.Default(), client, config)
 }
 
@@ -197,5 +198,81 @@ func TestCollect_AuthFailure(t *testing.T) {
 	}
 	if authMetric.GetGauge().GetValue() != 0 {
 		t.Errorf("expected api_auth_ok=0, got %f", authMetric.GetGauge().GetValue())
+	}
+}
+
+func TestCollect_WithTimezone(t *testing.T) {
+	healthSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer healthSrv.Close()
+
+	statsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`[{"date":"2024-01-01","stats":[{"metrics":{"requests":7}}]}]`))
+	}))
+	defer statsSrv.Close()
+
+	config := Config{
+		UserName:   "test-user",
+		Location:   "Asia/Tokyo",
+		TimeOffset: 32400,
+	}
+	c := newTestCollectorWithConfig(healthSrv.URL, statsSrv.URL, config)
+	ch := make(chan prometheus.Metric, 50)
+	c.Collect(ch)
+
+	metrics := drainMetrics(ch)
+
+	// 2 health + 16 stats = 18
+	if len(metrics) != 18 {
+		t.Errorf("expected 18 metrics, got %d", len(metrics))
+	}
+
+	reqMetric := findMetric(metrics, "\"requests\"")
+	if reqMetric == nil {
+		t.Fatal("requests metric not found")
+	}
+	if reqMetric.GetGauge().GetValue() != 7 {
+		t.Errorf("expected requests=7, got %f", reqMetric.GetGauge().GetValue())
+	}
+}
+
+func TestCollect_WithAccumulatedMetrics(t *testing.T) {
+	healthSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer healthSrv.Close()
+
+	statsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if q.Get("aggregated_by") != "month" {
+			t.Errorf("expected aggregated_by=month, got %s", q.Get("aggregated_by"))
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`[{"date":"2024-01-01","stats":[{"metrics":{"requests":100}}]}]`))
+	}))
+	defer statsSrv.Close()
+
+	config := Config{
+		UserName:           "test-user",
+		AccumulatedMetrics: true,
+	}
+	c := newTestCollectorWithConfig(healthSrv.URL, statsSrv.URL, config)
+	ch := make(chan prometheus.Metric, 50)
+	c.Collect(ch)
+
+	metrics := drainMetrics(ch)
+
+	if len(metrics) != 18 {
+		t.Errorf("expected 18 metrics, got %d", len(metrics))
+	}
+
+	reqMetric := findMetric(metrics, "\"requests\"")
+	if reqMetric == nil {
+		t.Fatal("requests metric not found")
+	}
+	if reqMetric.GetGauge().GetValue() != 100 {
+		t.Errorf("expected requests=100, got %f", reqMetric.GetGauge().GetValue())
 	}
 }
