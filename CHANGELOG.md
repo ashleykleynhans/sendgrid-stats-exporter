@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.1
+
+- Automate Helm chart version and image tag from git tag in release workflow
+
 ## v0.2.0
 
 - Add `sendgrid_account_type` and `sendgrid_reputation` metrics from `/v3/user/account`
