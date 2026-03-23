@@ -125,6 +125,105 @@ jobs:
           dpkg-deb --build ${PKG}
           rm sendgrid_exporter
 
+      - name: Install RPM tools
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Build RPM package amd64
+        env:
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          GIT_HASH=$(git rev-parse HEAD)
+          go build -ldflags "-s -w -X main.version=v${VERSION} -X main.gitCommit=${GIT_HASH}" -o sendgrid_exporter ./cmd/exporter
+          mkdir -p rpmbuild/{SPECS,SOURCES,BUILD,RPMS,SRPMS}
+          mkdir -p rpmbuild/BUILD/usr/bin
+          mkdir -p rpmbuild/BUILD/etc/sysconfig
+          mkdir -p rpmbuild/BUILD/usr/lib/systemd/system
+          cp sendgrid_exporter rpmbuild/BUILD/usr/bin/
+          cp packaging/sysconfig/sendgrid-stats-exporter rpmbuild/BUILD/etc/sysconfig/
+          cp packaging/systemd/sendgrid-stats-exporter.service rpmbuild/BUILD/usr/lib/systemd/system/
+          cat > rpmbuild/SPECS/sendgrid-stats-exporter.spec <<'SPEC'
+          Name:    sendgrid-stats-exporter
+          Version: VERSION_PLACEHOLDER
+          Release: 1%{?dist}
+          Summary: Prometheus exporter for SendGrid email delivery metrics
+          License: MIT
+          URL:     https://github.com/ashleykleynhans/sendgrid-stats-exporter
+
+          %description
+          Prometheus exporter for SendGrid email delivery metrics via the Stats API (v3).
+
+          %install
+          cp -a %{_builddir}/* %{buildroot}/
+
+          %files
+          %attr(0755, root, root) /usr/bin/sendgrid_exporter
+          %config(noreplace) /etc/sysconfig/sendgrid-stats-exporter
+          /usr/lib/systemd/system/sendgrid-stats-exporter.service
+
+          %pre
+          getent group sendgrid-exporter >/dev/null || groupadd -r sendgrid-exporter
+          getent passwd sendgrid-exporter >/dev/null || useradd -r -g sendgrid-exporter -s /sbin/nologin -d / sendgrid-exporter
+          exit 0
+
+          %post
+          systemctl daemon-reload
+          SPEC
+          sed -i 's/^          //' rpmbuild/SPECS/sendgrid-stats-exporter.spec
+          sed -i "s/VERSION_PLACEHOLDER/${VERSION}/" rpmbuild/SPECS/sendgrid-stats-exporter.spec
+          rpmbuild --define "_topdir $(pwd)/rpmbuild" --define "_arch x86_64" --target x86_64 -bb rpmbuild/SPECS/sendgrid-stats-exporter.spec
+          cp rpmbuild/RPMS/x86_64/*.rpm .
+          rm sendgrid_exporter
+          rm -rf rpmbuild
+
+      - name: Build RPM package arm64
+        env:
+          GOOS: linux
+          GOARCH: arm64
+        run: |
+          GIT_HASH=$(git rev-parse HEAD)
+          go build -ldflags "-s -w -X main.version=v${VERSION} -X main.gitCommit=${GIT_HASH}" -o sendgrid_exporter ./cmd/exporter
+          mkdir -p rpmbuild/{SPECS,SOURCES,BUILD,RPMS,SRPMS}
+          mkdir -p rpmbuild/BUILD/usr/bin
+          mkdir -p rpmbuild/BUILD/etc/sysconfig
+          mkdir -p rpmbuild/BUILD/usr/lib/systemd/system
+          cp sendgrid_exporter rpmbuild/BUILD/usr/bin/
+          cp packaging/sysconfig/sendgrid-stats-exporter rpmbuild/BUILD/etc/sysconfig/
+          cp packaging/systemd/sendgrid-stats-exporter.service rpmbuild/BUILD/usr/lib/systemd/system/
+          cat > rpmbuild/SPECS/sendgrid-stats-exporter.spec <<'SPEC'
+          Name:    sendgrid-stats-exporter
+          Version: VERSION_PLACEHOLDER
+          Release: 1%{?dist}
+          Summary: Prometheus exporter for SendGrid email delivery metrics
+          License: MIT
+          URL:     https://github.com/ashleykleynhans/sendgrid-stats-exporter
+
+          %description
+          Prometheus exporter for SendGrid email delivery metrics via the Stats API (v3).
+
+          %install
+          cp -a %{_builddir}/* %{buildroot}/
+
+          %files
+          %attr(0755, root, root) /usr/bin/sendgrid_exporter
+          %config(noreplace) /etc/sysconfig/sendgrid-stats-exporter
+          /usr/lib/systemd/system/sendgrid-stats-exporter.service
+
+          %pre
+          getent group sendgrid-exporter >/dev/null || groupadd -r sendgrid-exporter
+          getent passwd sendgrid-exporter >/dev/null || useradd -r -g sendgrid-exporter -s /sbin/nologin -d / sendgrid-exporter
+          exit 0
+
+          %post
+          systemctl daemon-reload
+          SPEC
+          sed -i 's/^          //' rpmbuild/SPECS/sendgrid-stats-exporter.spec
+          sed -i "s/VERSION_PLACEHOLDER/${VERSION}/" rpmbuild/SPECS/sendgrid-stats-exporter.spec
+          rpmbuild --define "_topdir $(pwd)/rpmbuild" --define "_arch aarch64" --target aarch64 -bb rpmbuild/SPECS/sendgrid-stats-exporter.spec
+          cp rpmbuild/RPMS/aarch64/*.rpm .
+          rm sendgrid_exporter
+          rm -rf rpmbuild
+
       - name: Generate changelog
         id: changelog
         run: |
@@ -153,3 +252,4 @@ jobs:
             sendgrid_exporter-*.tar.gz
             sendgrid-stats-exporter*.tgz
             sendgrid-stats-exporter_*.deb
+            sendgrid-stats-exporter-*.rpm
