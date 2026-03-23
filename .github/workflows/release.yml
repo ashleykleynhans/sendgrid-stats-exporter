@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - run: go test ./...
+
+      - name: Build linux/amd64
+        env:
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          VERSION=${GITHUB_REF_NAME}
+          GIT_HASH=$(git rev-parse HEAD)
+          go build -ldflags "-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_HASH}" -o sendgrid-stats-exporter ./cmd/exporter
+          tar czf sendgrid-stats-exporter-${VERSION}-linux-amd64.tar.gz sendgrid-stats-exporter
+          rm sendgrid-stats-exporter
+
+      - name: Build linux/arm64
+        env:
+          GOOS: linux
+          GOARCH: arm64
+        run: |
+          VERSION=${GITHUB_REF_NAME}
+          GIT_HASH=$(git rev-parse HEAD)
+          go build -ldflags "-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_HASH}" -o sendgrid-stats-exporter ./cmd/exporter
+          tar czf sendgrid-stats-exporter-${VERSION}-linux-arm64.tar.gz sendgrid-stats-exporter
+          rm sendgrid-stats-exporter
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            echo "body<<EOF" >> "$GITHUB_OUTPUT"
+            git log --pretty=format:"- %s" >> "$GITHUB_OUTPUT"
+            echo "" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+          else
+            echo "body<<EOF" >> "$GITHUB_OUTPUT"
+            git log --pretty=format:"- %s" ${PREV_TAG}..HEAD >> "$GITHUB_OUTPUT"
+            echo "" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.changelog.outputs.body }}
+          files: sendgrid-stats-exporter-*.tar.gz

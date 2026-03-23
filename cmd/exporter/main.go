@@ -2,15 +2,17 @@ package main
 
 import (
 	"context"
-	"github.com/prometheus/client_golang/prometheus/collectors"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/chatwork/sendgrid-stats-exporter/internal/collector"
+	"github.com/chatwork/sendgrid-stats-exporter/internal/sendgrid"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/promlog"
 	"github.com/prometheus/common/promlog/flag"
@@ -19,11 +21,7 @@ import (
 )
 
 const (
-	namespace    = "sendgrid"
-	exporterName = "sendgrid-stats-exporter"
-)
-
-const (
+	exporterName      = "sendgrid-stats-exporter"
 	stopTimeoutSecond = 10
 )
 
@@ -70,11 +68,18 @@ func main() {
 
 	level.Info(logger).Log("msg", "Starting", exporterName, "version", version.Info(), gitCommit)
 	level.Info(logger).Log("Build context", version.BuildContext())
-
 	level.Info(logger).Log("msg", "Listening on", *listenAddress)
 
-	collector := collector(logger)
-	prometheus.MustRegister(collector)
+	client := sendgrid.NewClient(*sendGridAPIKey)
+	config := collector.Config{
+		UserName:           *sendGridUserName,
+		Location:           *location,
+		TimeOffset:         *timeOffset,
+		AccumulatedMetrics: *accumulatedMetrics,
+	}
+	c := collector.New(logger, client, config)
+
+	prometheus.MustRegister(c)
 	prometheus.Unregister(collectors.NewGoCollector())
 	registry := prometheus.NewRegistry()
 
@@ -85,15 +90,10 @@ func main() {
 		)
 	}
 
-	registry.MustRegister(collector)
+	registry.MustRegister(c)
 
 	sig := make(chan os.Signal, 1)
-	signal.Notify(
-		sig,
-		syscall.SIGTERM,
-		syscall.SIGINT,
-	)
-
+	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	defer signal.Stop(sig)
 
 	mux := http.NewServeMux()

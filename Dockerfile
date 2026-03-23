@@ -4,10 +4,10 @@ COPY ./ /go/src/github.com/chatwork/sendgrid-stats-exporter
 WORKDIR /go/src/github.com/chatwork/sendgrid-stats-exporter
 
 RUN go mod download \
-#    && go test ./... \
-    && CGO_ENABLED=0 GOOS=linux go build -o /bin/exporter
+    && go test ./... \
+    && CGO_ENABLED=0 GOOS=linux go build -o /bin/exporter ./cmd/exporter
 
-FROM alpine:3.15
+FROM alpine:3.21
 
 RUN apk --no-cache add ca-certificates \
      && addgroup exporter \

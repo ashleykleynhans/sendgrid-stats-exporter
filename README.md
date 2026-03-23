@@ -4,6 +4,7 @@ Prometheus exporter for SendGrid daily metrics exposed by SendGrid Stats API(v3)
 
     +---------------------------+                          +------------+                        +--------------+
     |  SendGrid Stats API (v3)  |---(collect /v3/stats)--->|  exporter  |<---(scrape /metrics)---|  Prometheus  |
+    |                           |---(probe /v3/scopes)---->|            |                        |              |
     +---------------------------+                          +------------+                        +--------------+
 
 ## Usage
@@ -64,6 +65,8 @@ unique_clicks | The number of unique recipients who clicked links in your emails
 unique_opens | The number of unique recipients who opened your emails.
 unsubscribe_drops | The number of emails dropped due to a recipient unsubscribing from your emails.
 unsubscribes | The number of recipients who unsubscribed from your emails.
+api_up | 1 if the SendGrid API is reachable, 0 otherwise. Probes `/v3/scopes` on each scrape.
+api_auth_ok | 1 if the SendGrid API key is valid, 0 if unauthorized (401/403). Only meaningful when `api_up` is 1.
 
 ## Dashboard
 

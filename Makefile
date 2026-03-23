@@ -17,7 +17,11 @@ default: build
 .PHONY: build
 build:
 	@echo "version: $(VERSION) hash: $(GIT_HASH) tag: $(GIT_TAG)"
-	go build -ldflags "-s -w -X main.version=$(VERSION) -X main.gitCommit=$(GIT_HASH)" -o $(DIST_DIR)/exporter .
+	go build -ldflags "-s -w -X main.version=$(VERSION) -X main.gitCommit=$(GIT_HASH)" -o $(DIST_DIR)/exporter ./cmd/exporter
+
+.PHONY: test
+test:
+	go test ./...
 
 .PHONY: build-image
 build-image:

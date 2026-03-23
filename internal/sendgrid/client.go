@@ -1,4 +1,4 @@
-package main
+package sendgrid
 
 import (
 	"encoding/json"
@@ -10,10 +10,12 @@ import (
 	"time"
 )
 
-const (
-	endpoint = "https://api.sendgrid.com/v3/stats"
+var (
+	StatsEndpoint  = "https://api.sendgrid.com/v3/stats"
+	HealthEndpoint = "https://api.sendgrid.com/v3/scopes"
 )
 
+// Metrics represents the email delivery metrics returned by the SendGrid Stats API.
 type Metrics struct {
 	Blocks           int64 `json:"blocks,omitempty"`
 	BounceDrops      int64 `json:"bounce_drops,omitempty"`
@@ -33,17 +35,64 @@ type Metrics struct {
 	Unsubscribes     int64 `json:"unsubscribes,omitempty"`
 }
 
+// Stat wraps a Metrics entry from the API response.
 type Stat struct {
 	Metrics *Metrics `json:"metrics,omitempty"`
 }
 
+// Statistics represents a single date's stats from the API response.
 type Statistics struct {
 	Date  string  `json:"date,omitempty"`
 	Stats []*Stat `json:"stats,omitempty"`
 }
 
-func collectByDate(timeStart time.Time, timeEnd time.Time) ([]*Statistics, error) {
-	parsedURL, err := url.Parse(endpoint)
+// HealthStatus captures the result of a SendGrid API health probe.
+type HealthStatus struct {
+	Up     float64 // 1 = reachable, 0 = network/server error
+	AuthOk float64 // 1 = key valid, 0 = 401/403
+}
+
+// Client is a SendGrid API client for stats and health checking.
+type Client struct {
+	APIKey     string
+	HTTPClient *http.Client
+}
+
+// NewClient creates a new SendGrid API client.
+func NewClient(apiKey string) *Client {
+	return &Client{
+		APIKey:     apiKey,
+		HTTPClient: http.DefaultClient,
+	}
+}
+
+// CheckHealth probes the SendGrid API to determine reachability and key validity.
+func (c *Client) CheckHealth() HealthStatus {
+	req, err := http.NewRequest(http.MethodGet, HealthEndpoint, nil)
+	if err != nil {
+		return HealthStatus{Up: 0, AuthOk: 0}
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.APIKey))
+
+	res, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return HealthStatus{Up: 0, AuthOk: 0}
+	}
+	defer res.Body.Close()
+
+	switch res.StatusCode {
+	case http.StatusOK:
+		return HealthStatus{Up: 1, AuthOk: 1}
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return HealthStatus{Up: 1, AuthOk: 0}
+	default:
+		return HealthStatus{Up: 0, AuthOk: 0}
+	}
+}
+
+// CollectByDate fetches email stats from the SendGrid API for the given date range.
+func (c *Client) CollectByDate(timeStart time.Time, timeEnd time.Time, accumulated bool) ([]*Statistics, error) {
+	parsedURL, err := url.Parse(StatsEndpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +104,7 @@ func collectByDate(timeStart time.Time, timeEnd time.Time) ([]*Statistics, error
 	query := url.Values{}
 	query.Set("start_date", dateStart)
 	query.Set("end_date", dateEnd)
-	if *accumulatedMetrics {
+	if accumulated {
 		query.Set("aggregated_by", "month")
 	} else {
 		query.Set("aggregated_by", "day")
@@ -67,9 +116,9 @@ func collectByDate(timeStart time.Time, timeEnd time.Time) ([]*Statistics, error
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", *sendGridAPIKey))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.APIKey))
 
-	res, err := http.DefaultClient.Do(req)
+	res, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
