@@ -1,0 +1,9 @@
+# Configuration for sendgrid-stats-exporter
+# This file is sourced by the systemd service unit.
+
+SENDGRID_API_KEY=
+# SENDGRID_USER_NAME=
+# LISTEN_ADDRESS=:9154
+# SENDGRID_LOCATION=
+# SENDGRID_TIME_OFFSET=0
+# SENDGRID_ACCUMULATED_METRICS=False

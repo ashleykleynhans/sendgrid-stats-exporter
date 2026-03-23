@@ -34,15 +34,51 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Set version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
       - name: Build linux/amd64
         env:
           GOOS: linux
           GOARCH: amd64
         run: |
-          VERSION=${GITHUB_REF_NAME}
           GIT_HASH=$(git rev-parse HEAD)
-          go build -ldflags "-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_HASH}" -o sendgrid_exporter ./cmd/exporter
-          tar czf sendgrid_exporter-${VERSION}-linux-amd64.tar.gz sendgrid_exporter
+          go build -ldflags "-s -w -X main.version=v${VERSION} -X main.gitCommit=${GIT_HASH}" -o sendgrid_exporter ./cmd/exporter
+          tar czf sendgrid_exporter-v${VERSION}-linux-amd64.tar.gz sendgrid_exporter
+
+      - name: Build Debian package amd64
+        run: |
+          PKG=sendgrid-stats-exporter_${VERSION}_amd64
+          mkdir -p ${PKG}/DEBIAN
+          mkdir -p ${PKG}/usr/bin
+          mkdir -p ${PKG}/etc/default
+          mkdir -p ${PKG}/lib/systemd/system
+          cp sendgrid_exporter ${PKG}/usr/bin/
+          cp packaging/systemd/sendgrid-stats-exporter.service ${PKG}/lib/systemd/system/
+          cp packaging/default/sendgrid-stats-exporter ${PKG}/etc/default/
+          cat > ${PKG}/DEBIAN/control <<EOF
+          Package: sendgrid-stats-exporter
+          Version: ${VERSION}
+          Architecture: amd64
+          Maintainer: Ashley Kleynhans <ashley.kleynhans@gmail.com>
+          Description: Prometheus exporter for SendGrid email delivery metrics
+          Depends: adduser
+          EOF
+          sed -i 's/^          //' ${PKG}/DEBIAN/control
+          cat > ${PKG}/DEBIAN/postinst <<'POSTINST'
+          #!/bin/sh
+          set -e
+          if ! getent group sendgrid-exporter >/dev/null; then
+            addgroup --system sendgrid-exporter
+          fi
+          if ! getent passwd sendgrid-exporter >/dev/null; then
+            adduser --system --ingroup sendgrid-exporter --no-create-home --shell /usr/sbin/nologin sendgrid-exporter
+          fi
+          systemctl daemon-reload
+          POSTINST
+          sed -i 's/^          //' ${PKG}/DEBIAN/postinst
+          chmod 755 ${PKG}/DEBIAN/postinst
+          dpkg-deb --build ${PKG}
           rm sendgrid_exporter
 
       - name: Build linux/arm64
@@ -50,10 +86,43 @@ jobs:
           GOOS: linux
           GOARCH: arm64
         run: |
-          VERSION=${GITHUB_REF_NAME}
           GIT_HASH=$(git rev-parse HEAD)
-          go build -ldflags "-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_HASH}" -o sendgrid_exporter ./cmd/exporter
-          tar czf sendgrid_exporter-${VERSION}-linux-arm64.tar.gz sendgrid_exporter
+          go build -ldflags "-s -w -X main.version=v${VERSION} -X main.gitCommit=${GIT_HASH}" -o sendgrid_exporter ./cmd/exporter
+          tar czf sendgrid_exporter-v${VERSION}-linux-arm64.tar.gz sendgrid_exporter
+
+      - name: Build Debian package arm64
+        run: |
+          PKG=sendgrid-stats-exporter_${VERSION}_arm64
+          mkdir -p ${PKG}/DEBIAN
+          mkdir -p ${PKG}/usr/bin
+          mkdir -p ${PKG}/etc/default
+          mkdir -p ${PKG}/lib/systemd/system
+          cp sendgrid_exporter ${PKG}/usr/bin/
+          cp packaging/systemd/sendgrid-stats-exporter.service ${PKG}/lib/systemd/system/
+          cp packaging/default/sendgrid-stats-exporter ${PKG}/etc/default/
+          cat > ${PKG}/DEBIAN/control <<EOF
+          Package: sendgrid-stats-exporter
+          Version: ${VERSION}
+          Architecture: arm64
+          Maintainer: Ashley Kleynhans <ashley.kleynhans@gmail.com>
+          Description: Prometheus exporter for SendGrid email delivery metrics
+          Depends: adduser
+          EOF
+          sed -i 's/^          //' ${PKG}/DEBIAN/control
+          cat > ${PKG}/DEBIAN/postinst <<'POSTINST'
+          #!/bin/sh
+          set -e
+          if ! getent group sendgrid-exporter >/dev/null; then
+            addgroup --system sendgrid-exporter
+          fi
+          if ! getent passwd sendgrid-exporter >/dev/null; then
+            adduser --system --ingroup sendgrid-exporter --no-create-home --shell /usr/sbin/nologin sendgrid-exporter
+          fi
+          systemctl daemon-reload
+          POSTINST
+          sed -i 's/^          //' ${PKG}/DEBIAN/postinst
+          chmod 755 ${PKG}/DEBIAN/postinst
+          dpkg-deb --build ${PKG}
           rm sendgrid_exporter
 
       - name: Generate changelog
@@ -82,4 +151,5 @@ jobs:
           body: ${{ steps.changelog.outputs.body }}
           files: |
             sendgrid_exporter-*.tar.gz
-            sendgrid-stats-exporter-*.tgz
+            sendgrid-stats-exporter*.tgz
+            sendgrid-stats-exporter_*.deb

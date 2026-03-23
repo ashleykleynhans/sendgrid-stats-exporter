@@ -1,0 +1,16 @@
+[Unit]
+Description=Prometheus SendGrid Stats Exporter
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sendgrid-exporter
+Group=sendgrid-exporter
+EnvironmentFile=-/etc/default/sendgrid-stats-exporter
+ExecStart=/usr/bin/sendgrid_exporter
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
